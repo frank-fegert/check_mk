@@ -1,0 +1,113 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the current per process cpu usage of
+# Dell PowerConnect switches. This has currently been verified to work with
+# the following switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# Warning and critical threshold values in "%" for the per process CPU
+# usage can be passed to the check script with the:
+#   dell_powerconnect_cpu_proc_default_critical
+#   dell_powerconnect_cpu_proc_default_warning
+# configuration options.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# Default overall warning and critical values
+dell_powerconnect_cpu_proc_default_warning = float(30.0)
+dell_powerconnect_cpu_proc_default_critical = float(40.0)
+
+# The inventory function
+def inventory_dell_powerconnect_cpu_proc(checkname,info):
+    if (len(info[0]) >= 1):
+        return [ ( None, ( dell_powerconnect_cpu_proc_default_warning, dell_powerconnect_cpu_proc_default_critical ) ) ]
+
+# The check function
+def check_dell_powerconnect_cpu_proc(checktype, params, info):
+    warn, crit = params
+    warn = float(warn)
+    crit = float(crit)
+    output = ''
+    perfdata = []
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # Sort process list by symbolic name
+    info.sort(key=lambda info: info[0])
+
+    # If the returned number of results seems plausible
+    if (len(info) >= 1):
+        # Build standard output string 
+        output = " - Per process CPU utilization -"
+
+        # Iterate over every line, with each line containing one process name and a set of
+        # CPU utilization metrics
+        for line in info:
+            proc_name = line[0].replace(' ', '_')
+            # Clean up the string with reported CPU usage and split it into an array. The 3rd, 6th and 9th
+            # fields of the array (index 2, 5 and 8) contain the relevant CPU usage values in "%"
+            # Example:
+            #   "    5 Secs ( 49.69%)    60 Secs ( 47.01%)   300 Secs ( 41.33%) "
+            tinfo = line[1].replace('(', '')
+            tinfo = tinfo.replace(')', '')
+            tinfo = tinfo.split()
+
+            # Build performance data array
+            perfdata.append( (proc_name + "__5", tinfo[2], warn, crit ) )
+            perfdata.append( (proc_name + "__60", tinfo[5], warn, crit ) )
+            perfdata.append( (proc_name + "__300", tinfo[8], warn, crit ) )
+
+            # Iterate over all three CPU utilization values and check against thresholds
+            for idx in [2, 5, 8]:
+                value = float(tinfo[idx].replace('%', ''))
+                if (value >= crit):
+                    output = output + ' ' + proc_name + ' ' + tinfo[idx-2] + 'sec: ' + tinfo[idx]
+                    output = output + ' (!!)'
+                    if (rc != 2):
+                        rc = 2
+                elif (value >= warn):
+                    output = output + ' ' + proc_name + ' ' + tinfo[idx-2] + 'sec: ' + tinfo[idx]
+                    output = output + ' (!)'
+                    if (rc == 0):
+                        rc = 1
+
+        # Combine all output information into on string
+        if (rc == 0):
+            output = output + ' ' + status[rc]
+        output = status[rc] + output
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output, perfdata)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_cpu_proc'] = {
+    'check_function'        : check_dell_powerconnect_cpu_proc,
+    'inventory_function'    : inventory_dell_powerconnect_cpu_proc,
+    'service_description'   : "PowerConnect CPU per process",
+    'snmp_info'             : ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.4.8.1", ["2", "3"] ),
+    'snmp_scan_function'    : lambda oid: oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.4.8.1") != None,
+    'has_perfdata'          : True,
+}
+
+#
+# EOF

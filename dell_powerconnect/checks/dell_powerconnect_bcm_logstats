@@ -1,0 +1,98 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the number of log messages (total,
+# dropped, relayed to syslog hosts) on Dell PowerConnect switches. This
+# has currently been verified to work with the following Broadcom FastPath
+# silicon based switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# No warning and critical threshold values are currently implemented. This
+# check script is purely used for the purpose of gathering performance
+# data.
+#
+# List of the OIDs that are being used:
+#   FASTPATH-LOGGING-MIB::agentLogMessagesReceived.0                .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.1.0
+#   FASTPATH-LOGGING-MIB::agentLogMessagesDropped.0                 .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.2.0
+#   FASTPATH-LOGGING-MIB::agentLogSyslogMessagesRelayed.0           .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.3.0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.1.0 = Counter32: 27431
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.2.0 = Counter32: 129
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.3.0 = Counter32: 192
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# The inventory function
+def inventory_dell_powerconnect_bcm_logstats(checkname,info):
+    if len(info) != 1:
+        return
+    return [ ( None, None ) ]
+
+# The check function
+def check_dell_powerconnect_bcm_logstats(unit, params, info):
+    if len(info) != 1:
+        return
+
+    # Initialize some variables
+    output = ''
+    perfdata = []
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # If the returned number of results seems plausible
+    if (len(info[0][0]) == 3):
+        # Get the total, dropped and relayed number of log messages
+        log_msg_total   = int(list(info[0][0])[0])
+        log_msg_dropped = int(list(info[0][0])[1])
+        log_msg_relayed = int(list(info[0][0])[2])
+
+        # Build output string and performance data array
+        output = ('Total log messages: %s, Dropped log messages: %s, Messages relayed to syslog: %s' % (log_msg_total, log_msg_dropped, log_msg_relayed))
+        perfdata.append( ( 'log_msg_total', str(log_msg_total) + 'c' ) )
+        perfdata.append( ( 'log_msg_dropped', str(log_msg_dropped) + 'c' ) )
+        perfdata.append( ( 'log_msg_relayed', str(log_msg_relayed) + 'c' ) )
+
+        output = status[rc] + ' - ' + output
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output, perfdata)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_bcm_logstats'] = {
+    'check_function'          : check_dell_powerconnect_bcm_logstats,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_logstats,
+    'service_description'     : "Dell PowerConnect Broadcom Log Statistics",
+    'snmp_info'               : [
+        ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2", [
+             "1",   # agentLogMessagesReceived
+             "2",   # agentLogMessagesDropped
+             "3",   # agentLogSyslogMessagesRelayed
+        ]),
+    ],
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.14.2.1.0") > 0,
+    'has_perfdata'            : True,
+}
+
+#
+# EOF

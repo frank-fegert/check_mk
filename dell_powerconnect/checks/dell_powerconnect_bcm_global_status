@@ -1,0 +1,90 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the global status of the "product"
+# on Dell PowerConnect switches. This has currently been verified to work
+# with the following Broadcom FastPath silicon based switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# No warning and critical threshold values are currently implemented.
+#
+# List of the OIDs that are being used:
+#   Dell-Vendor-MIB::productStatusGlobalStatus.0        .1.3.6.1.4.1.674.10895.3000.1.2.110.1.0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.674.10895.3000.1.2.110.1.0 = INTEGER: ok(3)
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# Global status map
+dell_powerconnect_bcm_global_status_map = {
+    3: 'ok',            # If fans and power supplies are functioning and the system did not reboot because of a HW watchdog failure or a SW fatal error condition.
+    4: 'non-critical',  # If at least one power supply is not functional or the system rebooted at least once because of a HW watchdog failure or a SW fatal error condition.
+    5: 'critical',      # If at least one fan is not functional, possibly causing a dangerous warming up of the device.
+}
+
+# The inventory function
+def inventory_dell_powerconnect_bcm_global_status(checkname,info):
+    if len(info) != 1:
+        return
+    return [ ( None, None ) ]
+
+# The check function
+def check_dell_powerconnect_bcm_global_status(unit, params, info):
+    if len(info) != 1:
+        return
+
+    # Initialize some variables
+    output = ''
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # Get and check the global status of the system
+    status_global = int(list(info[0][0])[0])
+    status_global_info = ''
+
+    if (status_global >= 3 and status_global <= 5):
+        if (status_global == 5):
+            rc = 2
+        elif (status_global == 4):
+            rc = 1
+        elif (status_global == 3):
+            rc = 0
+        output = status[rc] + " - Global system status \"%s\" (numeric value: %s)" % (dell_powerconnect_bcm_global_status_map[status_global], status_global)
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_bcm_global_status'] = {
+    'check_function'          : check_dell_powerconnect_bcm_global_status,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_global_status,
+    'service_description'     : "Dell PowerConnect Broadcom Global Status",
+    'snmp_info'               : [
+        ( ".1.3.6.1.4.1.674.10895.3000.1.2.110", [ "1" ] ),     # productStatusGlobalStatus
+    ],
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.4.1.674.10895.3000.1.2.110.1.0") > 0,
+}
+
+#
+# EOF

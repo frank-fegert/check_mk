@@ -1,0 +1,41 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: Memory
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the current memory usage on Dell PowerConnect switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ {WARN} or {CRIT} is returned, if the amount of free memory in KBytes is equal
+ or below the given thresholds. {OK} is returned otherwise.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the memory usage on the switch
+ unit.
+
+examples:
+ # Setting the warning and critical threshold values to 25600 and 12800 KBytes free memory.
+ dell_powerconnect_bcm_mem_default_levels = {
+    'levels': (25600, 12800)
+ }
+
+perfdata:
+ The total amount of memory and the amount of currently free memory in the switch.
+
+[parameters]
+parameters (dict): This check works with dictionary based parameters. The
+ following keys are allowed:
+
+  {"levels"}: A pair of warning / critical levels, given as integer values,
+  for the amount of free memory in KBytes. The default values are 51200
+  (warning) and 25600 (critical) KBytes of free memory.
+

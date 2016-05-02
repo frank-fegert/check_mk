@@ -1,0 +1,135 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the number of currently active SSH
+# sessions on Dell PowerConnect switches. This has currently been verified
+# to work with the following Broadcom FastPath silicon based switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# Warning and critical threshold values for the number of currently active
+# SSH sessions can be passed to the check script with the:
+#   dell_powerconnect_bcm_ssh_sessions_default_levels = {
+#       'levels': (warning, critical)
+#   }
+# configuration option. Otherwise the systems default value from the SNMP
+# OID agentSSHMaxSessionsCount is used.
+#
+# List of the OIDs that are being used:
+#   FASTPATH-MGMT-SECURITY-MIB::agentSSHSessionsCount.0         .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.11.2.3.0
+#   FASTPATH-MGMT-SECURITY-MIB::agentSSHMaxSessionsCount.0      .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.11.2.4.0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.11.2.3.0 = INTEGER: 0
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.11.2.4.0 = INTEGER: 5
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# Default warning and critical values
+factory_settings["dell_powerconnect_bcm_ssh_sessions_default_levels"] = {
+    "levels": (5, 5)
+}
+
+# The inventory function
+def inventory_dell_powerconnect_bcm_ssh_sessions(checkname,info):
+    # info[0][0][0] contains the current number of active SSH sessions
+    # info[0][0][1] contains the maximum number of allowed SSH sessions
+    if len(info) != 1:
+        return
+
+    warn = None
+    crit = None
+    warn_sys = int(list(info[0][0])[1])
+    crit_sys = int(list(info[0][0])[1])
+
+    # Default levels are user defined, check them ...
+    if len(dell_powerconnect_bcm_ssh_sessions_default_levels) > 0:
+        warn, crit = dell_powerconnect_bcm_ssh_sessions_default_levels['levels']
+        if (warn is None and crit is None):
+            # User defined default levels are not usable, use system defaults
+            return [ ( None, (warn_sys, crit_sys) ) ]
+        else:
+            # User defined default levels are ok, use them
+            return [ ( None, "dell_powerconnect_bcm_ssh_sessions_default_levels" ) ]
+    else:
+        return [ ( None, (warn_sys, crit_sys) ) ]
+
+# The check function
+def check_dell_powerconnect_bcm_ssh_sessions(unit, params, info):
+    # info[0][0][0] contains the current number of active SSH sessions
+    # info[0][0][1] contains the maximum number of allowed SSH sessions
+    if len(info) != 1:
+        return
+
+    # Initialize some variables
+    output = ''
+    perfdata = []
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # Get the warning and critical threshold values for this unit
+    warn = None
+    crit = None
+    if type(params) is dict: 
+        warn, crit = params['levels']
+    elif type (params) is tuple:
+        (warn, crit) = params
+    warn = int(warn)
+    crit = int(crit)
+
+    # If the returned number of results seems plausible
+    if (len(info[0][0]) == 2):
+        # Get the number of currently active SSH sessions
+        num_ssh_sessions = int(list(info[0][0])[0])
+
+        # Check the number of currently active SSH connections against the warning and critical threshold values.
+        if (num_ssh_sessions >= crit):
+            rc = 2
+        elif (num_ssh_sessions >= warn):
+            rc = 1
+
+        # Build output string and performance data array
+        output = status[rc] + " - Number of currently active SSH sessions: %s, Warning %s, Critical %s" % (num_ssh_sessions, warn, crit)
+        perfdata.append( ( 'ssh_sessions', num_ssh_sessions, warn, crit ) )
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output, perfdata)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_bcm_ssh_sessions'] = {
+    'check_function'          : check_dell_powerconnect_bcm_ssh_sessions,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_ssh_sessions,
+    'service_description'     : "Dell PowerConnect Broadcom SSH Sessions",
+    'snmp_info'               : [
+        ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.11.2", [
+            "3",    # agentSSHSessionsCount
+            "4",    # agentSSHMaxSessionsCount
+        ]),
+    ],
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.11.2.3.0") > 0,
+    'has_perfdata'            : True,
+    'default_levels_variable' : 'dell_powerconnect_bcm_ssh_sessions_default_levels',
+    'group'                   : 'dell_powerconnect_bcm_ssh_sessions',
+}
+
+#
+# EOF

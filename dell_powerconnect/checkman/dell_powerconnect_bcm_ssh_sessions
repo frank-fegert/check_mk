@@ -1,0 +1,42 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: SSH Sessions
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the currently active SSH sessions on Dell PowerConnect
+ switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ {WARN} or {CRIT} is returned, if the number of currently active SSH sessions is
+ above the given thresholds. {OK} is returned otherwise.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the number of SSH sessions.
+
+examples:
+ # Setting the warning and critical threshold values to 4 and 5 active SSH sessions.
+ dell_powerconnect_bcm_ssh_sessions_default_levels = {
+    'levels': (4, 5)
+ }
+
+perfdata:
+ The value of the currently active SSH sessions.
+
+[parameters]
+parameters (dict): This check works with dictionary based parameters. The
+ following keys are allowed:
+
+  {"levels"}: A pair of warning / critical levels, given as integer values,
+  for the number of allowed concurrent SSH sessions. The default values are
+  5 (warning) and 5 (critical) SSH sessions.
+
+

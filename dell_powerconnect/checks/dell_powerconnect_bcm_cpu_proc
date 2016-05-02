@@ -5,15 +5,16 @@
 #
 # Check_MK check script to determine the current per process cpu usage of
 # Dell PowerConnect switches. This has currently been verified to work with
-# the following switch models:
+# the following Broadcom FastPath silicon based switch models:
 #   PowerConnect M8024-k
 #   PowerConnect M6348 
 #
 # Warning and critical threshold values in "%" for the per process CPU
 # usage can be passed to the check script with the:
-#   dell_powerconnect_cpu_proc_default_critical
-#   dell_powerconnect_cpu_proc_default_warning
-# configuration options.
+#   dell_powerconnect_bcm_cpu_proc_default_levels = {
+#       'levels': (warning, critical)
+#   }
+# configuration option.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -30,18 +31,19 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
 #
 
-# Default overall warning and critical values
-dell_powerconnect_cpu_proc_default_warning = float(30.0)
-dell_powerconnect_cpu_proc_default_critical = float(40.0)
+# Default warning and critical values
+factory_settings["dell_powerconnect_bcm_cpu_proc_default_levels"] = {
+    "levels": (float(80.0), float(90.0))
+}
 
 # The inventory function
-def inventory_dell_powerconnect_cpu_proc(checkname,info):
+def inventory_dell_powerconnect_bcm_cpu_proc(checkname,info):
     if (len(info[0]) >= 1):
-        return [ ( None, ( dell_powerconnect_cpu_proc_default_warning, dell_powerconnect_cpu_proc_default_critical ) ) ]
+        return [ ( None, "dell_powerconnect_bcm_cpu_proc_default_levels" ) ]
 
 # The check function
-def check_dell_powerconnect_cpu_proc(checktype, params, info):
-    warn, crit = params
+def check_dell_powerconnect_bcm_cpu_proc(checktype, params, info):
+    warn, crit = params['levels']
     warn = float(warn)
     crit = float(crit)
     output = ''
@@ -100,13 +102,14 @@ def check_dell_powerconnect_cpu_proc(checktype, params, info):
     return (rc, output, perfdata)
 
 # Declaration of the check for Check_MK
-check_info['dell_powerconnect_cpu_proc'] = {
-    'check_function'        : check_dell_powerconnect_cpu_proc,
-    'inventory_function'    : inventory_dell_powerconnect_cpu_proc,
-    'service_description'   : "PowerConnect CPU per process",
-    'snmp_info'             : ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.4.8.1", ["2", "3"] ),
-    'snmp_scan_function'    : lambda oid: oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.4.8.1") != None,
-    'has_perfdata'          : True,
+check_info['dell_powerconnect_bcm_cpu_proc'] = {
+    'check_function'          : check_dell_powerconnect_bcm_cpu_proc,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_cpu_proc,
+    'service_description'     : "PowerConnect Broadcom CPU per process",
+    'snmp_info'               : ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.4.8.1", ["2", "3"] ),
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.4.8.1") != None,
+    'has_perfdata'            : True,
+    'default_levels_variable' : 'dell_powerconnect_bcm_cpu_proc_default_levels',
 }
 
 #

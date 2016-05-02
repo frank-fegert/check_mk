@@ -1,0 +1,34 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: IP Conflict
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines if an IP address conflict has been detected on Dell
+ PowerConnect switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ {WARN} is returned, if there has been an IP address conflict. {OK} is
+ returned otherwise.
+
+ In case of a detected IP address conflict, the status can be cleared on
+ the switch with the 'clear ip address-conflict-detect' command.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the IP address conflict
+ detection on the switch unit.
+
+examples:
+ None.
+
+perfdata:
+ None.
+

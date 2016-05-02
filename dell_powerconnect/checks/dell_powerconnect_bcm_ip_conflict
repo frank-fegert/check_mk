@@ -1,0 +1,96 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine if an IP address conflict has been de-
+# tected on Dell PowerConnect switches. This has currently been verified to
+# work with the following Broadcom FastPath silicon based switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# No warning and critical threshold values are currently implemented.
+#
+# List of the OIDs that are being used:
+#   FASTPATH-SWITCHING-MIB::agentSwitchAddressConflictDetectionStatus.0     .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.1.0
+#   FASTPATH-SWITCHING-MIB::agentSwitchLastConflictingIPAddr.0              .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.3.0
+#   FASTPATH-SWITCHING-MIB::agentSwitchLastConflictingMacAddr.0             .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.4.0
+#   FASTPATH-SWITCHING-MIB::agentSwitchLastConflictReportedTime.0           .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.5.0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.1.0 = INTEGER: false(0)
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.3.0 = IpAddress: 0.0.0.0
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.4.0 = STRING: 0:0:0:0:0:0
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.5.0 = Timeticks: (0) 0:00:00.00
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# The inventory function
+def inventory_dell_powerconnect_bcm_ip_conflict(checkname,info):
+    if len(info) != 1:
+        return
+    return [ ( None, None ) ]
+
+# The check function
+def check_dell_powerconnect_bcm_ip_conflict(unit, params, info):
+    if len(info) != 1:
+        return
+
+    # Initialize some variables
+    output = ''
+    perfdata = []
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # If the returned number of results seems plausible
+    if (len(info[0][0]) == 4):
+        conflict_status = int(list(info[0][0])[0])
+        conflict_ip     = list(info[0][0])[1]
+        conflict_mac    = list(info[0][0])[2]
+        conflict_time   = list(info[0][0])[3]
+
+        if (conflict_status != 0):
+            rc = 1
+            # Build output string
+            output = status[rc] + " - Duplicate IP %s on MAC %s detected %s seconds before" % (conflict_ip, conflict_mac, conflict_time)
+        else:
+            output = status[rc] + " - No duplicate IP address detected"
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_bcm_ip_conflict'] = {
+    'check_function'          : check_dell_powerconnect_bcm_ip_conflict,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_ip_conflict,
+    'service_description'     : "Dell PowerConnect Broadcom IP Address Conflict Detection",
+    'snmp_info'               : [
+        ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26", [
+             "1",   # agentSwitchAddressConflictDetectionStatus
+             "3",   # agentSwitchLastConflictingIPAddr
+             "4",   # agentSwitchLastConflictingMacAddr
+             "5",   # agentSwitchLastConflictReportedTime
+        ]),
+    ],
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.2.8.26.1.0") > 0,
+}
+
+#
+# EOF

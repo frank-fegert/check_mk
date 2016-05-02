@@ -1,0 +1,43 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: SNTP client
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the current status of the SNTP client on Dell PowerConnect
+ switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ {WARN} or {CRIT} is returned, if the number of successfully queried NTP servers
+ is equal or below the given thresholds. {OK} is returned otherwise.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the SNTP client on the switch
+ unit.
+
+examples:
+ # Setting the warning and critical threshold values to 2 and 1 successfully queried NTP servers.
+ dell_powerconnect_bcm_sntp_default_levels = {
+    'levels': (2, 1)
+ }
+
+perfdata:
+ The number of failed and the number of successful NTP requests for each configured NTP server.
+
+[parameters]
+parameters (dict): This check works with dictionary based parameters. The
+ following keys are allowed:
+
+  {"levels"}: A pair of warning / critical levels, given as integer values,
+  for the number of NTP servers that have to be sucessfully queried. The
+  default values are 1 (warning) and 0 (critical) sucessfully queried NTP
+  servers.
+

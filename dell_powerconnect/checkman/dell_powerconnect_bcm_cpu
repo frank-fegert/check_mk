@@ -1,0 +1,41 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: Total CPU Usage
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the current overall CPU usage on Dell PowerConnect switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ {WARN} or {CRIT} is returned, if the total CPU usage in '%' is equal or higher
+ than the given thresholds. {OK} is returned otherwise.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the overall CPU usage on the
+ switch unit.
+
+examples:
+ # Setting the warning and critical threshold values to 85.0% and 92.0% CPU usage.
+ dell_powerconnect_bcm_cpu_all_default_levels = {
+    'levels': (85.0, 92.0)
+ }
+
+perfdata:
+ The overall CPU usage in '%' on the switch in 5, 60 and 300 second intervals.
+
+[parameters]
+parameters (dict): This check works with dictionary based parameters. The
+ following keys are allowed:
+
+  {"levels"}: A pair of warning / critical levels, given as floating point
+  values, for the total CPU usage in '%'. The default values are 80.0
+  (warning) and 90.0 (critical) percent CPU usage.
+

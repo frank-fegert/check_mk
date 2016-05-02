@@ -1,0 +1,182 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the number of DNS queries (total and
+# several error states defined by RFC-1035) on Dell PowerConnect switches.
+# This has currently been verified to work with the following Broadcom Fast-
+# Path silicon based switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# No warning and critical threshold values are currently implemented. This
+# check script is purely used for the purpose of gathering performance
+# data.
+#
+# List of the OIDs that are being used:
+#   DNS-RESOLVER-MIB::dnsResCounterByOpcodeQueries.0        .1.3.6.1.2.1.32.2.1.2.3.1.2.0 = Counter32: 2576
+#   DNS-RESOLVER-MIB::dnsResCounterByOpcodeResponses.0      .1.3.6.1.2.1.32.2.1.2.3.1.3.0 = Counter32: 3        # RFC-1035 RCODE  Description
+#   DNS-RESOLVER-MIB::dnsResCounterByRcodeResponses.0       .1.3.6.1.2.1.32.2.1.2.4.1.2.0 = Counter32: 2575     # 0               No error condition
+#   DNS-RESOLVER-MIB::dnsResCounterByRcodeResponses.1       .1.3.6.1.2.1.32.2.1.2.4.1.2.1 = Counter32: 0        # 1               Format error - The name server was unable to interpret the query.
+#   DNS-RESOLVER-MIB::dnsResCounterByRcodeResponses.2       .1.3.6.1.2.1.32.2.1.2.4.1.2.2 = Counter32: 0        # 2               Server failure - The name server was unable to process this query due to a problem with the name server.
+#   DNS-RESOLVER-MIB::dnsResCounterByRcodeResponses.3       .1.3.6.1.2.1.32.2.1.2.4.1.2.3 = Counter32: 0        # 3               Name Error - Meaningful only for responses from an authoritative name server, this code signifies that the domain name referenced in the query does not exist.
+#   DNS-RESOLVER-MIB::dnsResCounterByRcodeResponses.4       .1.3.6.1.2.1.32.2.1.2.4.1.2.4 = Counter32: 0        # 4               Not Implemented - The name server does not support the requested kind of query.
+#   DNS-RESOLVER-MIB::dnsResCounterByRcodeResponses.5       .1.3.6.1.2.1.32.2.1.2.4.1.2.5 = Counter32: 0        # 5               Refused - The name server refuses to perform the specified operation for policy reasons.  For example, a name server may not wish to provide the information to the particular requester, or a name server may not wish to perform a particular operation (e.g., zone
+#   DNS-RESOLVER-MIB::dnsResCounterNonAuthDataResps.0       .1.3.6.1.2.1.32.2.1.2.5.0 = Counter32: 0
+#   DNS-RESOLVER-MIB::dnsResCounterNonAuthNoDataResps.0     .1.3.6.1.2.1.32.2.1.2.6.0 = Counter32: 0
+#   DNS-RESOLVER-MIB::dnsResCounterMartians.0               .1.3.6.1.2.1.32.2.1.2.7.0 = Counter32: 0
+#   DNS-RESOLVER-MIB::dnsResCounterRecdResponses.0          .1.3.6.1.2.1.32.2.1.2.8.0 = Counter32: 3
+#   DNS-RESOLVER-MIB::dnsResCounterUnparseResps.0           .1.3.6.1.2.1.32.2.1.2.9.0 = Counter32: 0
+#   DNS-RESOLVER-MIB::dnsResCounterFallbacks.0              .1.3.6.1.2.1.32.2.1.2.10.0 = Counter32: 2576
+#                                                                                                           
+#   DNS-RESOLVER-MIB::dnsResCacheGoodCaches.0               .1.3.6.1.2.1.32.2.1.4.3.0 = Counter32: 5149
+#   DNS-RESOLVER-MIB::dnsResCacheBadCaches.0                .1.3.6.1.2.1.32.2.1.4.4.0 = Counter32: 0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.2.1.32.2.1.2.3.1.2.0 = Counter32: 2576
+#   .1.3.6.1.2.1.32.2.1.2.3.1.3.0 = Counter32: 3
+#   .1.3.6.1.2.1.32.2.1.2.4.1.2.0 = Counter32: 2575
+#   .1.3.6.1.2.1.32.2.1.2.4.1.2.1 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.4.1.2.2 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.4.1.2.3 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.4.1.2.4 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.4.1.2.5 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.5.0 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.6.0 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.7.0 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.8.0 = Counter32: 3
+#   .1.3.6.1.2.1.32.2.1.2.9.0 = Counter32: 0
+#   .1.3.6.1.2.1.32.2.1.2.10.0 = Counter32: 2576
+#   
+#   .1.3.6.1.2.1.32.2.1.4.3.0 = Counter32: 5149
+#   .1.3.6.1.2.1.32.2.1.4.4.0 = Counter32: 0
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# The inventory function
+def inventory_dell_powerconnect_bcm_dnsstats(checkname,info):
+    # info[0] contains the DNS recurser statistics
+    # info[1] contains the DNS cache statistics
+    if len(info) != 2:
+        return
+    return [ ( None, None ) ]
+
+# The check function
+def check_dell_powerconnect_bcm_dnsstats(unit, params, info):
+    # info[0] contains the DNS recurser statistics
+    # info[1] contains the DNS cache statistics
+    if len(info) != 2:
+        return
+
+    # Initialize some variables
+    output = ''
+    output_dns = []
+    perfdata = []
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # If the returned number of results seems plausible
+    if (len(info[0][0]) == 14 and len(info[1][0]) == 2):
+        # Get the DNS recurser statistics
+        dns_queries             = int(list(info[0][0])[0])
+        dns_resp                = int(list(info[0][0])[1])
+        dns_rc_ok               = int(list(info[0][0])[2])
+        dns_rc_format           = int(list(info[0][0])[3])
+        dns_rc_server_failed    = int(list(info[0][0])[4])
+        dns_rc_name_error       = int(list(info[0][0])[5])
+        dns_rc_not_supported    = int(list(info[0][0])[6])
+        dns_rc_refused          = int(list(info[0][0])[7])
+        dns_na_data             = int(list(info[0][0])[8])
+        dns_na_nodata           = int(list(info[0][0])[9])
+        dns_martians            = int(list(info[0][0])[10])
+        dns_records             = int(list(info[0][0])[11])
+        dns_unparseable         = int(list(info[0][0])[12])
+        dns_fallbacks           = int(list(info[0][0])[13])
+
+        # Build output string and performance data array
+        output_dns.append('DNS queries: %s, responses: %s' % (dns_queries, dns_resp))
+        output_dns.append('DNS RCODE \"ok\": %s, \"format error\": %s, \"server failed\": %s, \"name error\": %s, \"not implemented\": %s, \"refused\": %s' % (dns_rc_ok, dns_rc_format, dns_rc_server_failed, dns_rc_name_error, dns_rc_not_supported, dns_rc_refused))
+        output_dns.append('DNS non-auth answer: %s, no answer: %s' % (dns_na_data, dns_na_nodata))
+        output_dns.append('DNS martians: %s, records: %s, unparsable: %s, fallbacks: %s' % (dns_martians, dns_records, dns_unparseable, dns_fallbacks))
+        perfdata.append( ( 'dns_queries', str(dns_queries) + 'c' ) )
+        perfdata.append( ( 'dns_resp', str(dns_resp) + 'c' ) )
+        perfdata.append( ( 'dns_rc_ok', str(dns_rc_ok) + 'c' ) )
+        perfdata.append( ( 'dns_rc_format', str(dns_rc_format) + 'c' ) )
+        perfdata.append( ( 'dns_rc_server_failed', str(dns_rc_server_failed) + 'c' ) )
+        perfdata.append( ( 'dns_rc_name_error', str(dns_rc_name_error) + 'c' ) )
+        perfdata.append( ( 'dns_rc_not_supported', str(dns_rc_not_supported) + 'c' ) )
+        perfdata.append( ( 'dns_rc_refused', str(dns_rc_refused) + 'c' ) )
+        perfdata.append( ( 'dns_na_data', str(dns_na_data) + 'c' ) )
+        perfdata.append( ( 'dns_na_nodata', str(dns_na_nodata) + 'c' ) )
+        perfdata.append( ( 'dns_martians', str(dns_martians) + 'c' ) )
+        perfdata.append( ( 'dns_records', str(dns_records) + 'c' ) )
+        perfdata.append( ( 'dns_unparseable', str(dns_unparseable) + 'c' ) )
+        perfdata.append( ( 'dns_fallbacks', str(dns_fallbacks) + 'c' ) )
+
+        # Get the DNS cache statistics
+        cache_good = int(list(info[1][0])[0])
+        cache_bad = int(list(info[1][0])[1])
+
+        # Build output string and performance data array
+        output_dns.append('DNS Cache RR ok: %s, failed: %s' % (cache_good, cache_bad))
+        perfdata.append( ( 'cache_good', str(cache_good) + 'c' ) )
+        perfdata.append( ( 'cache_bad', str(cache_bad) + 'c' ) )
+
+        # Combine all output information into on string
+        output = status[rc] + ' - ' + ', '.join(output_dns)
+
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output, perfdata)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_bcm_dnsstats'] = {
+    'check_function'          : check_dell_powerconnect_bcm_dnsstats,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_dnsstats,
+    'service_description'     : "Dell PowerConnect Broadcom DNS Statistics",
+    'snmp_info'               : [
+        ( ".1.3.6.1.2.1.32.2.1.2", [
+             "3.1.2.0", # dnsResCounterByOpcodeQueries
+             "3.1.3.0", # dnsResCounterByOpcodeResponses
+             "4.1.2.0", # dnsResCounterByRcodeResponses - RCODE 0
+             "4.1.2.1", # dnsResCounterByRcodeResponses - RCODE 1
+             "4.1.2.2", # dnsResCounterByRcodeResponses - RCODE 2
+             "4.1.2.3", # dnsResCounterByRcodeResponses - RCODE 3
+             "4.1.2.4", # dnsResCounterByRcodeResponses - RCODE 4
+             "4.1.2.5", # dnsResCounterByRcodeResponses - RCODE 5
+             "5.0",     # dnsResCounterNonAuthDataResps
+             "6.0",     # dnsResCounterNonAuthNoDataResps
+             "7.0",     # dnsResCounterMartians
+             "8.0",     # dnsResCounterRecdResponses
+             "9.0",     # dnsResCounterUnparseResps
+             "10.0",    # dnsResCounterFallbacks
+        ]),
+        ( ".1.3.6.1.2.1.32.2.1.4", [
+             "3",   # dnsResCacheGoodCaches
+             "4",   # dnsResCacheBadCaches
+        ]),
+    ],
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.2.1.32.2.1.2.3.1.2.0") > 0,
+    'has_perfdata'            : True,
+}
+
+#
+# EOF

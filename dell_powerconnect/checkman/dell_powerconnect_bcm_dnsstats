@@ -1,0 +1,35 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: DNS Statistics
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the number of DNS queries (total and several error states
+ defined by RFC-1035) on Dell PowerConnect switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ No warning and critical threshold values are currently implemented. This
+ check is purely used for the purpose of gathering performance data.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the DNS statistics on the
+ switch unit.
+
+examples:
+ None.
+
+perfdata:
+ The number of total DNS queries. The number of total DNS responses. The
+ number of DNS responses by their RCODE defined in RFC-1035, NonAuthData,
+ NonAuthNoData, Martians, RecdResponses, UnparseResps, Fallbacks. The number
+ of records successfully cached. The number of records not successfully
+ cached.
+

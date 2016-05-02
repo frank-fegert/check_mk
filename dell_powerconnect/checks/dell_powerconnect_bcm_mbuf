@@ -1,0 +1,115 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2015 - 2016  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the number of memory buffer allocations
+# for packets arriving at the CPU on Dell PowerConnect switches. This has
+# currently been verified to work with the following Broadcom FastPath silicon
+# based switch models:
+#   PowerConnect M8024-k
+#   PowerConnect M6348 
+#
+# No warning and critical threshold values are currently implemented. This
+# check script is purely used for the purpose of gathering performance
+# data.
+#
+# List of the OIDs that are being used:
+#   FASTPATH-SWITCHING-MIB::agentSwitchMbufsFree.0                  .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.1.0
+#   FASTPATH-SWITCHING-MIB::agentSwitchMbufClassName.<IDX>          .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1.2.<IDX>
+#   FASTPATH-SWITCHING-MIB::agentSwitchMbufAllocAttempts.<IDX>      .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1.3.<IDX>
+#   FASTPATH-SWITCHING-MIB::agentSwitchMbufAllocFails.<IDX>         .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1.4.<IDX>
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.1.0 = Gauge32: 240
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1.2.<IDX> = Hex-STRING: 54 72 61 6E 73 6D 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1.3.<IDX> = Counter32: 167775151
+#   .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1.4.<IDX> = Counter32: 0
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.#
+#
+
+# The inventory function
+def inventory_dell_powerconnect_bcm_mbuf(checkname,info):
+    # info[0] contains the overall number of free memory buffers
+    # info[1] contains the numer of allocation attempts per memory buffer class
+    if len(info) != 2:
+        return
+    return [ ( None, None ) ]
+
+# The check function
+def check_dell_powerconnect_bcm_mbuf(unit, params, info):
+    # info[0] contains the overall number of free memory buffers
+    # info[1] contains the numer of allocation attempts per memory buffer class
+    if len(info) != 2:
+        return
+
+    # Initialize some variables
+    output = ''
+    output_mbuf = []
+    perfdata = []
+    rc = 0
+    mb_class_name = ''
+    mb_class_alloc = 0
+    mb_class_failed = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # Get the overall number of free memory buffers
+    mb_free = int(list(info[0][0])[0])
+    output_mbuf.append('Mbuf free: %s' % (mb_free))
+    perfdata.append( ( 'mbuf_free', str(mb_free) ) )
+
+    # If the returned number of results seems plausible
+    if (len(info[1]) >= 1):
+        # Iterate over all memmory buffer classes
+        for item in info[1]:
+            # Important: remove trailing '\x00' characters!
+            mb_class_name = str(item[0]).rstrip('\x00')
+            mb_class_alloc = int(item[1])
+            mb_class_failed = int(item[2])
+            # Build output string and performance data array
+            output_mbuf.append('Mbuf Class \"%s\" allocations - total: %s, failed: %s' % (mb_class_name, mb_class_alloc, mb_class_failed))
+            perfdata.append( ( 'mbuf_alloc_' + mb_class_name.replace(' ', '_').lower(), str(mb_class_alloc) + 'c' ) )
+            perfdata.append( ( 'mbuf_failed_' + mb_class_name.replace(' ', '_').lower(), str(mb_class_failed) + 'c' ) )
+
+        # Combine all output information into on string
+        output = status[rc] + ' - ' + ', '.join(output_mbuf)
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output, perfdata)
+
+# Declaration of the check for Check_MK
+check_info['dell_powerconnect_bcm_mbuf'] = {
+    'check_function'          : check_dell_powerconnect_bcm_mbuf,
+    'inventory_function'      : inventory_dell_powerconnect_bcm_mbuf,
+    'service_description'     : "Dell PowerConnect Broadcom CPU Memory Buffer Statistics",
+    'snmp_info'               : [
+        ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7", [ "1" ] ),    # agentSwitchMbufsFree
+        ( ".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.2.1", [
+             "2",   # agentSwitchMbufClassName
+             "3",   # agentSwitchMbufAllocAttempts
+             "4",   # agentSwitchMbufAllocFails
+        ]),
+    ],
+    'snmp_scan_function'      : lambda oid: oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.674.10895") and oid(".1.3.6.1.4.1.674.10895.5000.2.6132.1.1.1.1.7.1.0") > 0,
+    'has_perfdata'            : True,
+}
+
+#
+# EOF

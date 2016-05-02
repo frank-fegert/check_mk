@@ -1,0 +1,33 @@
+title: Dell PowerConnect (Broadcom FastPath) Switches: Memory Buffer Allocations
+catalog: hw/network/dell
+agents: snmp
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the number of memory buffer allocations for packets
+ arriving at the CPU on Dell PowerConnect switches.
+
+ This has currently been verified to work with the following Broadcom FastPath
+ silicon based switch models:
+   PowerConnect M6348,
+   PowerConnect M8024-k
+
+ No warning and critical threshold values are currently implemented. This
+ check is purely used for the purpose of gathering performance data.
+
+item:
+ None.
+
+inventory:
+ The inventory creates a single service check for the memory buffer allocations
+ on the switch unit.
+
+examples:
+ None.
+
+perfdata:
+ The amount of currently free memory buffers in the switch. For each memory
+ buffer class ("Transmit", "Rx High", "Rx Mid0", "Rx Mid1", "Rx Mid2", "Rx
+ Normal") the number of total and the number of failed allocation attempts.
+

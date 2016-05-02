@@ -64,11 +64,11 @@ def check_dell_powerconnect_bcm_cpu_proc(unit, params, info):
     rc = 0
     status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
 
-    # Sort process list by symbolic name
-    info.sort(key=lambda info: info[0])
-
     # If the returned number of results seems plausible
-    if (len(info) >= 1):
+    if (info != None and len(info) >= 1):
+        # Sort process list by symbolic name
+        info.sort(key=lambda info: info[0])
+
         # Build standard output string 
         output = " - Per process CPU utilization -"
 

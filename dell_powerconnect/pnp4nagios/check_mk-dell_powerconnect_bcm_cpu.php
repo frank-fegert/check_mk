@@ -63,8 +63,8 @@ $def[1] .= "GPRINT:util_300:LAST:\"Cur\: %.0lf %s$uom_300 \" " ;
 $def[1] .= "GPRINT:util_300:AVERAGE:\"Avg\: %.0lf %s$uom_300 \" " ;
 $def[1] .= "GPRINT:util_300:MIN:\"Min\: %.0lf %s$uom_300 \" " ;
 $def[1] .= "GPRINT:util_300:MAX:\"Max\: %.0lf %s$uom_300 \\n\" " ;
-$def[1] .= "HRULE:$warn#FFFF00:\"Warning on   $warn $pre$uom_5 \\n\" ";
-$def[1] .= "HRULE:$crit#FF0000:\"Critical on  $crit $pre$uom_5 \\n\" ";
+$def[1] .= "HRULE:$warn#FFFF00:\"Warning on   $warn $pre".preg_replace('/%%/', '%', $uom_5)." \\n\" ";
+$def[1] .= "HRULE:$crit#FF0000:\"Critical on  $crit $pre".preg_replace('/%%/', '%', $uom_5)." \\n\" ";
 
 #
 ## EOF

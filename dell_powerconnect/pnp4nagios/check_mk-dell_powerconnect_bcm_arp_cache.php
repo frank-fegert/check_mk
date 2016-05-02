@@ -46,9 +46,9 @@ $opt[1] = "--width 650 --slope-mode --vertical-label $vlabel -l $min --title \"A
 
 # Graph definitions
 $def[1]  = "DEF:arp_current_total=$RRDFILE[1]:$DS[1]:AVERAGE " ;
-$def[1] .= "DEF:arp_max_total=$RRDFILE[2]:$DS[1]:AVERAGE " ;
-$def[1] .= "DEF:arp_current_static=$RRDFILE[3]:$DS[1]:AVERAGE " ;
-$def[1] .= "DEF:arp_max_static=$RRDFILE[4]:$DS[1]:AVERAGE " ;
+$def[1] .= "DEF:arp_max_total=$RRDFILE[2]:$DS[2]:AVERAGE " ;
+$def[1] .= "DEF:arp_current_static=$RRDFILE[3]:$DS[3]:AVERAGE " ;
+$def[1] .= "DEF:arp_max_static=$RRDFILE[4]:$DS[4]:AVERAGE " ;
 
 $def[1] .= "LINE:arp_current_total#40A018:\"Total ARP Current  \" " ;
 $def[1] .= "GPRINT:arp_current_total:LAST:\"Current\: %6.2lf %s$uom\" ";

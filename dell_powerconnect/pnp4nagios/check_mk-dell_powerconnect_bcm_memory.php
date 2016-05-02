@@ -45,7 +45,7 @@ $b_crit=$kb_crit*1024;
 $opt[1] = "--width 650 --vertical-label $vlabel -l 0 -u $b_max --title \"Memory usage - $hostname\" ";
 
 # Graph definitions
-$def[1]  = "DEF:var2=$RRDFILE[2]:$DS[1]:AVERAGE " ;
+$def[1]  = "DEF:var2=$RRDFILE[2]:$DS[2]:AVERAGE " ;
 $def[1] .= "CDEF:total=var2,1024,* ";
 $def[1] .= "DEF:var1=$RRDFILE[1]:$DS[1]:AVERAGE " ;
 $def[1] .= "CDEF:tmp1=var1,1024,* ";

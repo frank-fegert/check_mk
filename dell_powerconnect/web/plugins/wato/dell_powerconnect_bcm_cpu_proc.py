@@ -41,7 +41,7 @@ register_check_parameters(
         ]
     ),
     None,
-    None
+    "dict"
 ) 
 
 #

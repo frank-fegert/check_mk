@@ -43,7 +43,7 @@ register_check_parameters(
     TextAscii(
         title = _("Temperature sensor"), 
         help = _("The identifier of the temperature sensor")),
-    None
+    "dict"
 ) 
 
 #

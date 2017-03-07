@@ -1,0 +1,147 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2017  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the current XFS filesystem usage 
+# against configured XFS quota.
+#
+# Example output of the agent:
+#   <<<xfs_quota>>>
+#   /srv/xfstest:/dev/mapper/vg_xfstest:test1:2097152:0:1024:2:0:0
+#   /srv/xfstest:/dev/mapper/vg_xfstest:test2:0:0:1024:1:0:0
+#   /srv/xfstest2:/dev/mapper/vg_xfstest2:test1:2048:0:1048576:2:0:0
+#
+# Warning and critical threshold values for the soft and hard limits of
+# blocks and inodes can be passed to the check script with the:
+#   xfs_quota_default_levels = {
+#       'blocks_soft': (warning, critical),
+#       'blocks_hard': (warning, critical),
+#       'inodes_soft': (warning, critical),
+#       'inodes_hard': (warning, critical),
+#   }
+# configuration option.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+#
+
+# Default warning and critical values
+factory_settings["xfs_quota_default_levels"] = {
+    'blocks_hard': (0, 0),
+    'blocks_soft': (0, 0),
+    'inodes_hard': (0, 0),
+    'inodes_soft': (0, 0),
+}
+
+# The inventory function
+def inventory_xfs_quota(info):
+    inventory = []
+    for line in info:
+        fields =  line[0].split(':', 9)
+        if len(fields) == 9:
+            fs, device, project, blocks_used, blocks_soft, blocks_hard, inodes_used, inodes_soft, inodes_hard = fields[:9]
+            item = "%s / %s" % (fs, project)
+            inventory.append((item, "xfs_quota_default_levels"))
+    return inventory
+
+# The check function
+def check_xfs_quota(item, params, info):
+    blocks_hard_warn, blocks_hard_crit = params['blocks_hard']
+    blocks_soft_warn, blocks_soft_crit = params['blocks_soft']
+    inodes_hard_warn, inodes_hard_crit = params['inodes_hard']
+    inodes_soft_warn, inodes_soft_crit = params['inodes_soft']
+    output = ''
+    perfdata = []
+    rc = 0
+    status = {0: 'OK', 1: 'WARNING', 2: 'CRITICAL', 3: 'UNKNOWN'}
+
+    # If the returned number of results seems plausible
+    if (info != None and len(info) >= 1):
+        # Build standard output string 
+        output = " - XFS quota utilization -"
+
+        for line in info:
+            fields =  line[0].split(':', 9)
+            if len(fields) == 9:
+                fs, device, project, blocks_used, blocks_soft, blocks_hard, inodes_used, inodes_soft, inodes_hard = fields[:9]
+                curr_item = "%s / %s" % (fs, project)
+                if curr_item == item:
+                    # Build performance data array
+                    perfdata.append( ('b__' + fs + '__' + project, blocks_used, blocks_hard_warn, blocks_hard_crit ) )
+                    perfdata.append( ('i__' + fs + '__' + project, inodes_used, inodes_hard_warn, inodes_hard_crit ) )
+
+                    output = output + ' Blocks used: ' + blocks_used + ', Block quota soft: ' + blocks_soft + ', Block quota hard: ' + blocks_hard
+                    output = output + ', Inodes used: ' + inodes_used + ', Inode quota soft: ' + inodes_soft + ', Inode quota hard: ' + inodes_hard
+                    blocks_used = int(blocks_used)
+                    blocks_soft = int(blocks_soft)
+                    blocks_hard = int(blocks_hard)
+                    inodes_used = int(inodes_used)
+                    inodes_soft = int(inodes_soft)
+                    inodes_hard = int(inodes_hard)
+
+                    if (blocks_hard > 0):
+                        blocks_free = blocks_hard - blocks_used
+                        if (blocks_hard_crit > 0 and blocks_hard_crit > blocks_free):
+                            if (rc != 2):
+                                rc = 2
+                        if (blocks_hard_warn > 0 and blocks_hard_warn > blocks_free):
+                            if (rc == 0):
+                                rc = 1
+                    if (blocks_soft > 0):
+                        blocks_free = blocks_soft - blocks_used
+                        if (blocks_soft_crit > 0 and blocks_soft_crit > blocks_free):
+                            if (rc != 2):
+                                rc = 2
+                        if (blocks_soft_warn > 0 and blocks_soft_warn > blocks_free):
+                            if (rc == 0):
+                                rc = 1
+                    if (inodes_hard > 0):
+                        inodes_free = inodes_hard - inodes_used
+                        if (inodes_hard_crit > 0 and inodes_hard_crit > inodes_free):
+                            if (rc != 2):
+                                rc = 2
+                        if (inodes_hard_warn > 0 and inodes_hard_warn > inodes_free):
+                            if (rc == 0):
+                                rc = 1
+                    if (inodes_soft > 0):
+                        inodes_free = inodes_soft - inodes_used
+                        if (inodes_soft_crit > 0 and inodes_soft_crit > inodes_free):
+                            if (rc != 2):
+                                rc = 2
+                        if (inodes_soft_warn > 0 and inodes_soft_warn > inodes_free):
+                            if (rc == 0):
+                                rc = 1
+
+        output = status[rc] + output
+    else:
+        rc = 3
+        output = status[rc] + " - No or invalid data retrieved: %s" % info
+
+    # Return the final status and output string
+    return (rc, output, perfdata)
+
+# Declaration of the check for Check_MK
+check_info["xfs_quota"] = {
+    'check_function'          : check_xfs_quota,
+    'inventory_function'      : inventory_xfs_quota,
+    'service_description'     : 'XFS Quota on %s',
+    'has_perfdata'            : True,
+    'default_levels_variable' : 'xfs_quota_default_levels',
+    'group'                   : 'xfs_quota',
+}
+
+#
+## EOF

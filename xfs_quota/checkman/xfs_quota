@@ -1,0 +1,66 @@
+title: XFS filesystem quota usage
+catalog: os/storage
+agents: linux
+author: Frank Fegert <fra.nospam.nk@gmx.de>
+license: GPL
+distribution: https://github.com/frank-fegert/check_mk
+description:
+ This check determines the current overall XFS filesystem quota usage as
+ reported by the "xfs_quota -c report" command. Hard and soft, block and
+ inode quotas are supported.
+
+ {WARN} or {CRIT} is returned, if the number of free XFS filesystem blocks
+ or inodes is lower than the given thresholds. {OK} is returned otherwise.
+
+ Alarms are only generated if either a hard or soft, block or inode quota
+ is set to a value other than zero. For XFS filesystems with quotas enabled,
+ but all four quota values set to zero, only performance data is reported
+ by the check.
+
+item:
+ A pair consisting of the mount point of the filesystem and the ID of the
+ quota.
+
+inventory:
+ The inventory creates a single service check for each pair of XFS filesystem
+ and quota ID.
+
+examples:
+ # Setting the warning and critical threshold values to 20 and 10 free
+ # filesystem blocks and inodes for soft and hard quotas.
+ xfs_quota_default_levels {
+    'blocks_hard': (20, 10),
+    'blocks_soft': (20, 10),
+    'inodes_hard': (20, 10),
+    'inodes_soft': (20, 10),
+ }
+
+
+perfdata:
+ The number of used XFS filesystem blocks an the number of used XFS filesystem
+ inodes for each pair of XFS filesystem and quota ID.
+
+[parameters]
+parameters (dict): This check works with dictionary based parameters. The
+ following keys are allowed:
+
+  {"blocks_hard"}: A pair of warning / critical levels, given as integer
+  values, for the number of free XFS filesystem blocks which are compared
+  against the hard quota limits. The default values are 0 (warning) and 0
+  (critical) free filesystem blocks.
+
+  {"blocks_soft"}: A pair of warning / critical levels, given as integer
+  values, for the number of free XFS filesystem blocks which are compared
+  against the soft quota limits. The default values are 0 (warning) and 0
+  (critical) free filesystem blocks.
+
+  {"inodes_hard"}: A pair of warning / critical levels, given as integer
+  values, for the number of free XFS filesystem inodes which are compared
+  against the hard quota limits. The default values are 0 (warning) and 0
+  (critical) free filesystem inodes.
+
+  {"inodes_soft"}: A pair of warning / critical levels, given as integer
+  values, for the number of free XFS filesystem inodes which are compared
+  against the soft quota limits. The default values are 0 (warning) and 0
+  (critical) free filesystem inodes.
+

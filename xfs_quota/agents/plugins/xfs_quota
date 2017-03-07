@@ -1,0 +1,60 @@
+#!/bin/bash
+#set -x
+#
+# vim: set ai et ts=4 sw=4 sts=4 ft=sh:
+#
+# Copyright (C) 2017  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# A shell script Check_MK agent plugin to monitor XFS directory quotas.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 
+# 02110-1301, USA.
+#
+
+
+# Variables
+QUOTA_FS=""
+QUOTA_DEV=""
+PARAM_XFS_QUOTA="-x -c"
+
+# Paths
+GREP="/bin/egrep"
+SED="/bin/sed"
+XFS_QUOTA="/usr/sbin/xfs_quota"
+
+[[ ! -x ${XFS_QUOTA} ]] && exit 0
+echo '<<<xfs_quota>>>'
+
+${XFS_QUOTA} ${PARAM_XFS_QUOTA} 'report -p -b -i -a' | \
+    ${GREP} -v "^(Project ID|---------- -|[[:space:]]+Blocks[[:space:]]+Inodes|[[:space:]]+$|$)" | \
+    while read LN; do
+        TMP_LN="${LN##Project quota on }"
+        if [[ "${LN}" != "${TMP_LN}" ]]; then
+            QUOTA_FS="${TMP_LN%% *}"
+            QUOTA_DEV="${TMP_LN##* (}"
+            QUOTA_DEV="${QUOTA_DEV%%)*}"
+        fi
+
+        TMP_LN=""
+        TMP_LN="$(echo ${LN} | \
+                ${SED} -n -e '/^\([[:alnum:][:punct:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+[[:digit:]]\+[[:space:]]\+\[.*\][[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+[[:digit:]]\+[[:space:]]\+\[.*\][[:space:]]*/p' | \
+                ${SED} -e 's/^\([[:alnum:][:punct:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+[[:digit:]]\+[[:space:]]\+\[.*\][[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+\([[:digit:]]\+\)[[:space:]]\+[[:digit:]]\+[[:space:]]\+\[.*\][[:space:]]*/\1:\2:\3:\4:\5:\6:\7/')"
+        [[ -z "${TMP_LN}" ]] || echo "${QUOTA_FS}:${QUOTA_DEV}:${TMP_LN}"
+done
+
+echo
+
+#
+## EOF

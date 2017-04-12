@@ -32,7 +32,6 @@ def perfometer_check_mk_open_iscsi_session_stats(row, check_command, perf_data):
     #    (u'txdata_octets', u'0'),
     #    ...
     # ]
-    text = ""
     for perf_item in perf_data:
         metric = perf_item[0]
         value = perf_item[1]

@@ -1,0 +1,68 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2018  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the current CPU utilization on
+# Brocade Fibre Channel switches. This has currently been verified
+# to work with the following Brocade Fibre Channel switch models and
+# FabricOS versions:
+#   Brocade G620 (v8.1.2a)
+#
+# Warning and critical threshold values in "%" for the overall CPU usage
+# can be passed to the check script with the:
+#   brocade_cpu_default_levels = (80.0, 90.0)
+# configuration option.
+#
+# List of the OIDs that are being used:
+#   SW-MIB::swCpuUsage.0    .1.3.6.1.4.1.1588.2.1.1.1.26.1.0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.1588.2.1.1.1.26.1.0 = INTEGER: 15
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+#
+
+# Default warning and critical values
+brocade_cpu_default_levels = (80.0, 90.0)
+
+# The inventory function
+def inventory_brocade_cpu(info):
+    if len(info) >= 1:
+        return [ (None, "brocade_cpu_default_levels") ]
+
+# The check function
+def check_brocade_cpu(item, params, info):
+    return check_cpu_util(float(info[0][0]), params)
+
+# Declaration of the check for Check_MK
+check_info['brocade_cpu'] = {
+    'inventory_function'        : inventory_brocade_cpu,
+    'check_function'            : check_brocade_cpu,
+    'service_description'       : 'CPU utilization',
+    'has_perfdata'              : True,
+    'snmp_info'                 : (".1.3.6.1.4.1.1588.2.1.1.1.26", [
+                                    "1",    # swCpuUsage
+                                  ]),
+    'snmp_scan_function'        : lambda oid: (oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.1588") \
+                                            or oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.24.1.1588.2.1.1")) \
+                                              and oid(".1.3.6.1.4.1.1588.2.1.1.1.1.6.0") != None,
+    'group'                     : "cpu_utilization",
+    'includes'                  : [ "cpu_util.include" ],
+}
+
+#
+# EOF

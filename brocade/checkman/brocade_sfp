@@ -1,0 +1,44 @@
+title: Brocade FibreChannel Switches: SFP Status
+agents: snmp
+catalog: hw/storagehw/brocade
+license: GPL
+distribution: check_mk
+description:
+ This check monitors the SFP of a FibreChannel port of Brocade Fibre Channel
+ switches. SFP data is currently available for 8, 16 and 32 GBit FC SFPs only.
+
+ The following metrics are provided by this check:
+
+ {sfp_temp} The operational temperature level as reported by the SFP in degrees
+ celsius. Default temperature levels for warning and critical are 50 and 60
+ degrees celsius. These are configurable via WATO.
+
+ {sfp_voltage} The operational voltage level as reported by the SFP. This metric
+ is used for trending only.
+
+ {sfp_current} The operational current level as reported by the SFP. This metric
+ is used for trending only.
+
+ {sfp_rx_power} The operational power level of the received signal as reported
+ by the SFP in dBm. Default receive power levels for warning and critical are
+ -7.0 and -9.0 dBm. These are configurable via WATO.
+
+ {sfp_tx_power} The operational power level of the transmitted signal as reported
+ by the SFP in dBm. Default receive power levels for warning and critical are
+ -2.0 and -3.0 dBm. These are configurable via WATO.
+
+item:
+ The item is the port-number as two-digit or three-digit string (on switches
+ with 100 or more ports) as printed on the switch (note: the SNMP-index of
+ port {00} is {1}!). For ISL ports (inter-switch-links), an {ISL} is appended
+ to the item, e.g. {00 ISL}. This allows you to create rules which select
+ different check parameters for ISL and normal ports without specifying each
+ individual port. Also, if you have configured port names, they will appear
+ in the check item (and thus the service description). This can be turned
+ off.
+
+inventory:
+ The inventory creates one service for every operational port on a Brocade
+ Fibre Channel switch which has a SFP installed that is able to provide
+ health information.
+

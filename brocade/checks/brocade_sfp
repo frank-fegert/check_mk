@@ -1,0 +1,259 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2018  Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the receive and transmit power,
+# temperature, voltage and current of SFP modules in the ports of
+# Brocade Fibre Channel switches. This has currently been verified
+# to work with the following Brocade Fibre Channel switch models and
+# FabricOS versions:
+#   Brocade G620 (v8.1.2a)
+#
+# Warning and critical threshold values in degrees celsius for the
+# temperature and dBm for the RX and TX power of the SFP module can
+# be passed to the check script
+# with the:
+#   brocade_mem_default_levels = {
+#       'levels': (warning, critical),
+#       'rx_power': (warning, critical),
+#       'tx_power': (warning, critical)
+#   }
+# configuration option.
+#
+# List of the OIDs that are being used:
+#   SW-MIB::swFCPortName            .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.36
+#   SW-MIB::swFCPortSpecifier       .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.37
+#   SW-MIB::swFCPortPhyState        .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.3
+#   SW-MIB::swFCPortOpStatus        .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.4
+#   SW-MIB::swFCPortAdmStatus       .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.5
+#   FA-EXT-MIB::swSfpTemperature    .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.1.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0
+#   FA-EXT-MIB::swSfpVoltage        .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.2.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0
+#   FA-EXT-MIB::swSfpCurrent        .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.3.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0
+#   FA-EXT-MIB::swSfpRxPower        .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.4.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0
+#   FA-EXT-MIB::swSfpTxPower        .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.5.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0
+#
+# Example output of an SNMP query on the OIDs that are being used:
+#   .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.36.PORT_IDX = STRING: port01
+#   .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.37.PORT_IDX = STRING: 0
+#   .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.3.PORT_IDX = INTEGER: inSync(6)
+#   .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.4.PORT_IDX = INTEGER: online(1)
+#   .1.3.6.1.4.1.1588.2.1.1.1.6.2.1.5.PORT_IDX = INTEGER: online(1)
+#   .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.1.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0.PORT_IDX = STRING: "35"
+#   .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.2.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0.PORT_IDX = STRING: "3337.8"
+#   .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.3.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0.PORT_IDX = STRING: "6.538"
+#   .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.4.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0.PORT_IDX = STRING: "-3.3"
+#   .1.3.6.1.4.1.1588.2.1.1.1.28.1.1.5.16.0.136.148.113.20.28.240.0.0.0.0.0.0.0.0.PORT_IDX = STRING: "-1.4"
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+#
+
+# Default settings
+# settings for inventory: which ports should be inventorized
+brocade_fcport_inventory_phystates = [ 3, 4, 5, 6, 7, 8, 9, 10 ]
+brocade_fcport_inventory_opstates  = [ 1, 2, 3, 4, ]
+brocade_fcport_inventory_admstates = [ 1, 3, 4, ]
+brocade_fcport_inventory_use_portname = True # use swFCPortName as part of service description
+brocade_fcport_inventory_show_isl = True     # add "ISL" to service description for interswitch links
+brocade_fcport_inventory = []
+
+# Default warning and critical values
+factory_settings["brocade_sfp_default_levels"] = {
+    "levels": (55.0, 65.0),
+    "rx_power": (-7.0, -9.0),
+    "tx_power": (-2.0, -3.0)
+}
+
+# The parse function
+def parse_brocade_sfp(info):
+    swFCPortTable, isl_info, swSfpTable = info
+    isl_ports = {}
+    if len(info) > 1:
+        isl_ports = dict(isl_info)
+    swFCPorts = {}
+
+    for swFCPort in swFCPortTable:
+        portIdx, portNum, portDesc, portPhyStatus, portOpStatus, portAdmStatus = swFCPort
+        is_isl = 0
+        if portIdx in isl_ports:
+            is_isl = 1
+        swFCPorts[int(portIdx)] = {
+            "port_index":    int(portIdx),
+            "port_number":   int(portNum),
+            "port_desc":     portDesc,
+            "port_phystate": int(portPhyStatus),
+            "port_opstate":  int(portOpStatus),
+            "port_admstate": int(portAdmStatus),
+            "port_is_isl":   int(is_isl),
+        }
+
+    for swSfp in swSfpTable:
+        oid_end, swSfpTemp, swSfpVolt, swSfpCurr, swSfpRxPw, swSfpTxPw = swSfp
+        portIdx = idx_from_oid_end(oid_end)
+        swFCPorts[int(portIdx)]["sfp_temp"] = parse_sfp_value(swSfpTemp)
+        swFCPorts[int(portIdx)]["sfp_voltage"] = parse_sfp_value(swSfpVolt)
+        swFCPorts[int(portIdx)]["sfp_current"] = parse_sfp_value(swSfpCurr)
+        swFCPorts[int(portIdx)]["sfp_rx_power"] = parse_sfp_value(swSfpRxPw)
+        swFCPorts[int(portIdx)]["sfp_tx_power"] = parse_sfp_value(swSfpTxPw)
+    return swFCPorts
+
+# Returns a port index from OID_END
+def idx_from_oid_end(oid_end):
+    oid_end = oid_end.split('.')
+    return int(oid_end[-1])
+
+# Parse the SFP values and check for "NA" values
+def parse_sfp_value(value):
+    if value == 'N/A' or value == 'NA' or value.lower() == "not supported":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+# Determine the item / port name
+def brocade_sfp_getitem(ports, index, portname, is_isl, uses_portname, shows_isl):
+    itemname = ("%0" + str(len(str(len(ports)))) + "d") % (index - 1)
+    if is_isl and shows_isl:
+        itemname += " ISL"
+    if portname.strip() and uses_portname:
+        itemname += " " + portname.strip()
+    return itemname
+
+# The inventory function
+def inventory_brocade_sfp(parsed):
+    settings        = host_extra_conf_merged(g_hostname, brocade_fcport_inventory)
+    uses_portname   = settings.get("use_portname", brocade_fcport_inventory_use_portname)
+    shows_isl       = settings.get("show_isl", brocade_fcport_inventory_show_isl)
+    admstates       = settings.get("admstates", brocade_fcport_inventory_admstates)
+    opstates        = settings.get("opstates", brocade_fcport_inventory_opstates)
+    phystates       = settings.get("phystates", brocade_fcport_inventory_phystates)
+    inventory = []
+
+    for sfp_idx, sfp_entry in parsed.iteritems():
+        port_phystate = sfp_entry["port_phystate"]
+        port_opstate = sfp_entry["port_opstate"]
+        port_admstate = sfp_entry["port_admstate"]
+        sfp_temp = sfp_entry["sfp_temp"]
+        sfp_voltage = sfp_entry["sfp_voltage"]
+        sfp_current = sfp_entry["sfp_current"]
+        sfp_rx_power = sfp_entry["sfp_rx_power"]
+        sfp_tx_power = sfp_entry["sfp_tx_power"]
+        if port_admstate in admstates and \
+           port_opstate in opstates and \
+           port_phystate in phystates and \
+           ( sfp_temp != None or \
+             sfp_voltage != None or \
+             sfp_current != None or \
+             sfp_rx_power != None or \
+             sfp_tx_power != None ):
+            inventory.append((
+                    brocade_sfp_getitem(parsed, sfp_idx, sfp_entry["port_desc"], sfp_entry["port_is_isl"], uses_portname, shows_isl),
+                    "brocade_sfp_default_levels"
+                ))
+    return inventory
+
+# The check function
+def check_brocade_sfp(item, params, parsed):
+
+    def check_power_levels(power, params, name):
+        power_levels = params.get(name)
+        warn, crit = power_levels or (None, None)
+        if crit != None and power < crit:
+            status = 2
+        elif warn != None and power < warn:
+            status = 1
+        else:
+            status = 0
+        infotext = "%s dBm" % power
+        perfdata = [ (name, power, warn, crit) ]
+        return status, infotext, perfdata
+
+    item_fields = item.split()
+    if len(item_fields) >= 2:
+        item_idx = int(item_fields[0]) + 1
+        item_desc = item_fields[-1]
+
+        if item_idx in parsed:
+            sfp_entry = parsed[item_idx]
+            if sfp_entry is None:
+                yield 3, "No SNMP data found", None
+            elif sfp_entry["port_desc"] == item_desc:
+                if sfp_entry["sfp_temp"] is not None:
+                    state, text, perf = check_temperature(sfp_entry["sfp_temp"], params, "brocade_sfp_temp_%s" % item_idx)
+                    new_perf = list(perf[0])
+                    for perf_idx, perf_item in enumerate(new_perf):
+                        if perf_item == "temp":
+                            new_perf[perf_idx] = "sfp_" + perf_item
+                    perf = [ tuple(new_perf) ]
+                    yield state, "Temperature: %s" % text, perf
+                if sfp_entry["sfp_rx_power"] is not None:
+                    state, text, perf = check_power_levels(sfp_entry["sfp_rx_power"], params, "sfp_rx_power")
+                    yield state, "RX Power: %s" % text, perf
+                if sfp_entry["sfp_tx_power"] is not None:
+                    state, text, perf = check_power_levels(sfp_entry["sfp_tx_power"], params, "sfp_tx_power")
+                    yield state, "TX Power: %s" % text, perf
+                if sfp_entry["sfp_voltage"] is not None:
+                    voltage = sfp_entry["sfp_voltage"] / 1000
+                    perf = [ ("sfp_voltage", voltage, None, None) ]
+                    yield 0, "Voltage: %s V" % voltage, perf
+                if sfp_entry["sfp_current"] is not None:
+                    current = sfp_entry["sfp_current"]
+                    perf = [ ("sfp_current", (current / 1000), None, None) ]
+                    yield 0, "Current: %s mA" % current, perf
+            else:
+                yield 3, "SFP Port \"%s\" not found in SNMP data. Please check your configuration rules." % item, None
+
+# Declaration of the check for Check_MK
+check_info['brocade_sfp'] = {
+    'parse_function'            : parse_brocade_sfp,
+    'check_function'            : check_brocade_sfp,
+    'inventory_function'        : inventory_brocade_sfp,
+    'service_description'       : "SFP Port %s",
+    'snmp_info'                 : [ (".1.3.6.1.4.1.1588.2.1.1.1.6.2.1", [
+                                      OID_END,
+                                      37,         # swFCPortSpecifier
+                                      36,         # swFCPortName
+                                      3,          # swFCPortPhyState
+                                      4,          # swFCPortOpStatus
+                                      5,          # swFCPortAdmStatus
+                                    ]),
+                                    # List of Inter-Switch-Links
+                                    ( ".1.3.6.1.4.1.1588.2.1.1.1.2.9.1", [
+                                      2,          # swNbMyPort
+                                      OID_END,
+                                    ]),
+                                    # Status information of the SFP (only for 8GBit SFPs and higher)
+                                    (".1.3.6.1.4.1.1588.2.1.1.1.28.1.1", [
+                                      OID_END,
+                                      1,          # swSfpTemperature
+                                      2,          # swSfpVoltage
+                                      3,          # swSfpCurrent
+                                      4,          # swSfpRxPower
+                                      5,          # swSfpTxPower
+                                    ]),
+                                  ],
+    'snmp_scan_function'        : lambda oid: (oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.4.1.1588") \
+                                            or oid(".1.3.6.1.2.1.1.2.0").startswith(".1.3.6.1.24.1.1588.2.1.1")) \
+                                           and oid(".1.3.6.1.4.1.1588.2.1.1.1.1.6.0") != None,
+    'has_perfdata'              : True,
+    'default_levels_variable'   : 'brocade_sfp_default_levels',
+    'group'                     : "brocade_sfp",
+    'includes'                  : ["temperature.include"],
+}
+
+#
+## EOF

@@ -1,0 +1,53 @@
+title: SAP Cloud Connector Backend Performance
+agents: sapcc
+catalog: app/sap
+license: GPL
+distribution: check_mk
+description:
+ This check monitors the performance of each (on-premise) backend system
+ connected to a SAP Cloud Connector instance.
+
+ The backend performance metrics are grouped into 22 buckets for each
+ backend system by the SAP Cloud Connector monitoring API. In each bucket,
+ those backend calls are counted whose runtime matches the buckets timing
+ window definitions.
+
+ The following metrics are provided by this check:
+
+ {calls_total} The rate (calls per second) of overall calls. The absolute
+ number of overall calls is also reportet in the service state.
+
+ {calls_min_10_ms}, {calls_min_20_ms}, {calls_min_30_ms}, {calls_min_40_ms},
+ {calls_min_50_ms}, {calls_min_75_ms}, {calls_min_100_ms}, {calls_min_125_ms},
+ {calls_min_150_ms}, {calls_min_200_ms}, {calls_min_300_ms}, {calls_min_400_ms},
+ {calls_min_500_ms}, {calls_min_750_ms}, {calls_min_1000_ms}, {calls_min_1250_ms},
+ {calls_min_1500_ms}, {calls_min_2000_ms}, {calls_min_2500_ms}, {calls_min_3000_ms},
+ {calls_min_4000_ms}, {calls_min_5000_ms} The individual call rate for
+ each of the buckets.
+
+ With the two thresholds {runtime_warning} and {runtime_critical} the calls
+ in the above buckets are devided in three sets: {calls_ok} for the sum of
+ all calls in buckets with a runtime lower than {runtime_warning}, {calls_warn}
+ for the sum of all calls in buckets with a runtime higher than {runtime_warning}
+ and lower than {runtime_critical} and {calls_crit} for the sum of all calls
+ in buckets with a runtime higher than {runtime_critical}.
+
+ The metrics {calls_pct_ok}, {calls_pct_warn}, {calls_pct_crit} provide the
+ relative amount of calls in each of the three sets. The relative number
+ of calls in the set {calls_pct_warn} is compared to the {warning} threshold.
+ The relative number of calls in the set {calls_pct_crit} is compared to
+ the {critical} threshold.
+
+ Default levels for warning and critical {runtime} are 500 and 1000 milliseconds.
+ Default levels for warning and critical {percentage} are 10 and 5 percent.
+ These are configurable via WATO.
+
+item:
+ The item is a string derived from concatenating the configuration values
+ {protocol}, {virtualHost} (hostname or FQDN) and {virtualPort} (TCP port)
+ on the SAP Cloud Connector for each of the connections to the backend
+ systems.
+
+inventory:
+ The inventory creates one service for every (on-premise) backend system
+ connected to the monitored SAP Cloud Connector instance.

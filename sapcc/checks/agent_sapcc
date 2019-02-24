@@ -1,0 +1,38 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2019 Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK agent check script to pass configuration parameters to the
+# Check_MK agent "agent_sapcc".
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+#
+
+def agent_sapcc_arguments(params, hostname, ipaddress):
+    args = ''
+    args += " --username " + quote_shell_string(params["user"])
+    args += " --password " + quote_shell_string(params["password"])
+    if "timeout" in params:
+        args += " --timeout " + quote_shell_string(params["timeout"])
+    if "port" in params:
+        args += " --port " + quote_shell_string(str(params["port"]))
+    args += " --server " + quote_shell_string(hostname)
+    return args
+
+special_agent_info['sapcc'] = agent_sapcc_arguments
+#
+## EOF

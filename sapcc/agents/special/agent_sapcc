@@ -1,0 +1,279 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2019 Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK agent for the monitoring API of the SAP Cloud Connector.
+# Documentation of the monitoring API can be found at the following
+# URL:
+#   https://help.sap.com/viewer/cca91383641e40ffbe03bdc78f00f681/Cloud/en-US/f6e7a7bc6af345d2a334c2427a31d294.html
+#
+# This agent utilizes the python "requests" library to query the
+# SAP Cloud Connector monitoring API via HTTP/S. Please make sure
+# the python "requests" library is installed on the Check_MK server,
+# e.g. with "yum install python-requests" on a RHEL system.
+#
+# This agent currently queries the following endpoints of the SAP
+# Cloud Connector monitoring API via HTTP/S:
+#   /api/monitoring/subaccounts
+#   /api/monitoring/connections/backends
+#   /api/monitoring/performance/backends
+#   /api/monitoring/performance/toptimeconsumers
+#
+# It parses the JSON data returned from those endpoints and trans-
+# forms it into a flattened key, value list. This list is sub-
+# sequently printed for further processing of the data by Check_MK
+# check scripts.
+#
+# This agent has currently been verified to work with the following
+# versions of the SAP Cloud Connector:
+#   Version: 2.11.2
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+#
+
+from argparse import ArgumentParser
+import sys
+try:
+    import requests
+    from requests.auth import HTTPBasicAuth
+except ImportError as e:
+    sys.stderr.write('Cannot find python "requests" library. Please install the python "requests" library on the Check_MK server. %s\n' % e)
+    sys.exit(1)
+
+debug = 0
+field_separator = ";"
+base_url = None
+description_prefix = 'SAP Cloud Connector'
+version = '0.1'
+config = {
+    'subaccounts': {
+        'description': '%s subaccounts' % description_prefix,
+        'parameters': None,
+        'title': 'subaccounts',
+        'url': '/api/monitoring/subaccounts',
+    },
+    'connections_backends': {
+        'description': '%s backend connections' % description_prefix,
+        'parameters': None,
+        'title': 'connections_backends',
+        'url': '/api/monitoring/connections/backends',
+    },
+    'performance_backends': {
+        'description': '%s backend performance' % description_prefix,
+        'parameters': None,
+        'title': 'performance_backends',
+        'url': '/api/monitoring/performance/backends',
+    },
+    'performance_toptimeconsumers': {
+        'description': '%s top time consumers' % description_prefix,
+        'parameters': None,
+        'title': 'performance_toptimeconsumers',
+        'url': '/api/monitoring/performance/toptimeconsumers',
+    },
+}
+
+def flatten(d, separator=".", exclude=None):
+    """
+    recursively flatten dictionaries/lists. The result is a dictionary
+    with no nested dicts or lists and each element is a path using the
+    specified separator
+    """
+    def flatten_int(d, separator=separator, exclude=exclude):
+        result = []
+        if isinstance(d, list):
+            counter = 0
+            for i in d:
+                for k, v in flatten_int(i):
+                    if k is not None:
+                        k = "%d%s%s" % (counter, separator, k)
+                    else:
+                        k = counter
+                    result.append((k, v))
+
+                counter += 1
+        elif isinstance(d, dict):
+            for k, v in d.iteritems():
+                if k in exclude:
+                    pass
+                else:
+                    for sub_k, sub_v in flatten_int(v):
+                        if sub_k is not None:
+                            sub_k = "%s%s%s" % (k, separator, sub_k)
+                        else:
+                            sub_k = k
+                        result.append((sub_k, sub_v))
+        else:
+            result.append((None, d))
+        return result
+    return dict(flatten_int(d, separator))
+
+
+def rekey_by_name(d, attributes=['name']):
+    """
+    perform a transformation of a result datastructure based on a list
+    of attribute names. Use the values of these attribute names as keys
+    in a new result datastructure instead of an anonymous list
+    """
+    def rekey_by_name_int(d, attributes=attributes):
+        result = {}
+        if isinstance(d, list):
+            counter = 0
+            for i in d:
+                parent_k = str(counter)
+                sub_r = {}
+                for k, v in rekey_by_name_int(i).iteritems():
+                    if k in attributes:
+                        if not isinstance(v, dict) and not isinstance(v, list):
+                            parent_k = v
+                    sub_r[k] = v
+                result[parent_k] = sub_r
+                counter += 1
+        elif isinstance(d, dict):
+            for k, v in d.iteritems():
+                result[k] = {}
+                sub_r = {}
+                if k == "backendPerformance":
+                    # Special handling for "backendPerformance". Create a "name" attribute
+                    # based on a combination of the values of attributes "protocol",
+                    # "virtualHost" and "virtualPort"
+                    for i in v:
+                        bp_p = "HTTP" if i['protocol'] is None else i['protocol']
+                        bp_vh = "localhost" if i['virtualHost'] is None else i['virtualHost']
+                        bp_vp = "localport" if i['virtualPort'] is None else i['virtualPort']
+                        bp_n = "%s/%s:%s" % (bp_p, bp_vh, bp_vp)
+                        i['name'] = bp_n
+                for sub_k, sub_v in rekey_by_name_int(v).iteritems():
+                    if sub_k is None:
+                        result[k] = sub_v
+                    else:
+                        if k not in result:
+                            result[k] = {}
+                        result[k][sub_k] = sub_v
+        else:
+            result[None] = d
+        return result
+    return dict(rekey_by_name_int(d))
+
+
+def write_title(section):
+    sys.stdout.write("<<<sapcc_%s:sep(%d)>>>\n" % (section, ord(field_separator)))
+
+
+def send_request(base_url, path, settings, parameters=None):
+    auth = HTTPBasicAuth(settings['username'], settings['password'])
+    timeout = settings['timeout']
+    url = "%s%s" % (base_url, path)
+    if parameters is not None:
+        url = "%s?%s" % (url, "&".join(["%s=%s" % par
+                                        for par in parameters.iteritems()]))
+    try:
+        if debug >= 2:
+            sys.stderr.write('Sending HTTP GET request to URL: %s\n' % url)
+
+        # Fall back to HTTP/1.0 in order to work around "ChunkedEncodingError"
+        # and "IncompleteRead" errors when calling the "/api/monitoring/performance/toptimeconsumers"
+        # API which delivers rather largeish responses.
+        try:
+            import http.client as http_client   # Python 3
+        except ImportError:
+            import httplib as http_client       # Python 2
+        http_client.HTTPConnection._http_vsn = 10
+        http_client.HTTPConnection._http_vsn_str = 'HTTP/1.0'
+
+        # Debug the entire HTTP connection if debug level >= 3
+        if debug >= 3:
+            import logging
+
+            http_client.HTTPConnection.debuglevel = 1
+            logging.basicConfig()
+            logging.getLogger().setLevel(logging.DEBUG)
+            requests_log = logging.getLogger("requests.packages.urllib3")
+            requests_log.setLevel(logging.DEBUG)
+            requests_log.propagate = True
+
+        response = requests.get(url, auth=auth, timeout=timeout)
+        response_code = response.status_code
+        response.raise_for_status()
+    except requests.exceptions.ConnectionError as e:
+        sys.stderr.write('Cannot connect to SAP Cloud Connector management web API. %s\n' % e)
+    except requests.exceptions.Timeout as e:
+        sys.stderr.write('Connection to SAP Cloud Connector management web API timed out. %s\n' % e)
+    except (requests.exceptions.HTTPError, requests.exceptions.RequestException, Exception) as e:
+        sys.stderr.write('Cannot connect to SAP Cloud Connector management web API. %s\n' % e)
+        if debug >= 1:
+            raise
+        sys.exit(1)
+
+    if debug >= 2:
+        sys.stderr.write('Got HTTP response code: %d\n' % response_code)
+
+    return response.json()
+
+
+def main():
+    parser = ArgumentParser(description='Check_MK agent for the SAP Cloud Connector.')
+    parser.add_argument('-s', '--server', required=True, help='Hostname or IP-address of the SAP Cloud Connector management web API.')
+    parser.add_argument('-p', '--port', default=8443, type=int, help='TCP port of the SAP Cloud Connector management web API.')
+    parser.add_argument('-u', '--username', required=True, help='User account for the SAP Cloud Connector.')
+    parser.add_argument('-P', '--password', required=True, help='Password for the SAP Cloud Connector.')
+    parser.add_argument('-t', '--timeout', default=30, type=int, help='Timeout for the TCP connection to the SAP Cloud Connector in seconds.')
+    parser.add_argument('-d', '--debug', action='count', help='Set the debug level for agent. Multiple occurrences increase the verbosity level.')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + version)
+    args = parser.parse_args()
+    settings = vars(args)
+    global debug
+    debug = settings['debug']
+
+    if debug >= 1:
+        sys.stderr.write('Successfully parsed command line arguments.\n')
+    if debug >= 2:
+        sys.stderr.write('Command line arguments:\n')
+        for key, value in sorted(settings.items()):
+            sys.stderr.write('  %s: %s\n' % (key, value))
+
+    base_url = 'https://%s:%d' % (settings['server'], settings['port'])
+    if debug >= 1:
+        sys.stderr.write('Remote system base URL: %s.\n' % base_url)
+
+    if debug >= 1:
+        sys.stderr.write('Setting the timeout for the TCP socket to: %s seconds.\n' % settings['timeout'])
+
+    sys.stdout.write("<<<check_mk>>>\n")
+    sys.stdout.write('Version: %s\n' % version)
+
+    for metric in sorted(config.keys()):
+        description = config[metric]['description']
+        if debug >= 1:
+            sys.stderr.write('Start processing %s.\n' % description)
+        write_title(config[metric]['title'])
+        result = send_request(base_url, config[metric]['url'], settings, config[metric]['parameters'])
+        result_keyed = rekey_by_name(result, ['subaccount', 'name', 'buckets'])
+        flattened_results = flatten(result_keyed, separator=',', exclude=['version'])
+        output = []
+        for key, value in sorted(flattened_results.iteritems()):
+            if value:
+                output.append('%s;%s' % (key, value))
+        sys.stdout.write('\n'.join(output) + '\n')
+
+        if debug >= 1:
+            sys.stderr.write('Finished processing %s.\n' % description)
+
+if __name__ == "__main__":
+    main()
+
+#
+## EOF

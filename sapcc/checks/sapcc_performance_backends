@@ -1,0 +1,197 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+# Copyright (C) 2019 Frank Fegert (fra.nospam.nk@gmx.de)
+#
+# Check_MK check script to determine the performance of each (on-
+# premise) backend system connected to a SAP Cloud Connector instance.
+# The backend performance metrics are grouped into 22 buckets for each
+# backend system. In each bucket, those backend calls are counted whose
+# runtime matches the buckets timing definitions. The timing definitions
+# are as follows:
+#   Bucket  1: >=10ms and <20ms
+#   Bucket  2: >=20ms and <30ms
+#   Bucket  3: >=30ms and <40ms
+#   Bucket  4: >=40ms and <50ms
+#   Bucket  5: >=50ms and <75ms
+#   Bucket  6: >=75ms and <100ms
+#   Bucket  7: >=100ms and <125ms
+#   Bucket  8: >=125ms and <150ms
+#   Bucket  9: >=150ms and <200ms
+#   Bucket 10: >=200ms and <300ms
+#   Bucket 11: >=300ms and <400ms
+#   Bucket 12: >=400ms and <500ms
+#   Bucket 13: >=500ms and <750ms
+#   Bucket 14: >=750ms and <1000ms
+#   Bucket 15: >=1000ms and <1250ms
+#   Bucket 16: >=1250ms and <1500ms
+#   Bucket 17: >=1500ms and <2000ms
+#   Bucket 18: >=2000ms and <2500ms
+#   Bucket 19: >=2500ms and <3000ms
+#   Bucket 20: >=3000ms and <4000ms
+#   Bucket 21: >=4000ms and <5000ms
+#   Bucket 22: >=5000ms
+#
+# This check calculates and reports the absolute number and the rate
+# (calls per second) of overall calls. Those numbers are also passed
+# to the performance data.
+# For each of the above buckets, the individual call rate is passed
+# to the performance data.
+# From the total number of calls, the above buckets and two threshold
+# values (default warning: 500ms; default critical: 1000ms) the re-
+# lative number (in percent) of calls with a runtime higher than the
+# two thresholds values are calculated. If those relative number of
+# calls are higher than a second set of thresholds (default warning:
+# 10%, default critical: 5%), an alarm is raised accordingly.
+#
+# The warning and critical threshold values in milliseconds of run-
+# time for the two new runtime buckets and the warning and critical
+# threshold values in percent for the relative number of calls in
+# those two buckets can be passed to the check script with the:
+#   sapcc_performance_backends_default_levels = {
+#       'call_levels': (percent_warning, runtime_warning, percent_critical, runtime_critical)
+#   }
+# configuration option.
+#
+# This check has currently been verified to work with the following
+# versions of the SAP Cloud Connector:
+#   Version: 2.11.2
+#
+# Example output from agent:
+# <<<sapcc_performance_backends:sep(59)>>>
+# subaccounts,abcdefghi,locationID;Location ID
+# subaccounts,abcdefghi,regionHost;hana.ondemand.com
+# subaccounts,abcdefghi,sinceTime;2019-01-28T09:33:23.150 +0100
+# subaccounts,abcdefghi,subaccount;abcdefghi
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,name;PROTOCOL/FQDN:PORT
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,protocol;PROTOCOL
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,virtualHost;FQDN
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,virtualPort;PORT
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,1,minimumCallDurationMs;10
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,1,numberOfCalls;1
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,2,minimumCallDurationMs;20
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,2,numberOfCalls;1
+# ...
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,21,minimumCallDurationMs;4000
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,22,numberOfCalls;1
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,22,minimumCallDurationMs;5000
+# subaccounts,abcdefghi,backendPerformance,PROTOCOL/FQDN:PORT,buckets,22,numberOfCalls;1
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+#
+
+
+# The default warning and critical values for the "sapcc_performance_backends" check
+factory_settings['sapcc_performance_backends_default_levels'] = {
+    'call_levels': (10, 500, 5, 1000)
+}
+
+def inventory_sapcc_performance_backends(info):
+    inventory = []
+    for line in info:
+        # Sanity check
+        if re.match('.*,backendPerformance,.*,buckets,', line[0]):
+            (prefix, subaccount_id, backend_prefix, backend_id, bucket_prefix, bucket_id, bucket_attr) = line[0].split(',', 6)
+            inventory.append( (backend_id, "sapcc_performance_backends_default_levels") )
+    return inventory
+
+
+def check_sapcc_performance_backends(item, params, info):
+    from datetime import datetime
+    warn_call_pct, warn_call_dur, crit_call_pct, crit_call_dur = params['call_levels']
+    output = ''
+    output_status_crit = ''
+    output_status_warn = ''
+    output_calls = []
+    perfdata = []
+    rc = 0
+    backend = {}
+    backend_sum = 0
+    for line in info:
+        if re.match('.*,backendPerformance,.*,buckets,', line[0]):
+            (prefix, subaccount_id, backend_prefix, backend_id, bucket_prefix, bucket_id, bucket_attr) = line[0].split(',', 6)
+            bucket_id = int(bucket_id)
+            if backend_id == item:
+                if backend_id not in backend:
+                    backend[backend_id] = {}
+                if bucket_id not in backend[backend_id]:
+                    backend[backend_id][bucket_id] = {}
+                if bucket_attr == 'minimumCallDurationMs':
+                    backend[backend_id][bucket_id]['numberOfCalls'] = 0
+                if bucket_attr == 'numberOfCalls':
+                    backend_sum += int(line[1])
+                    backend[backend_id]['sum'] = backend_sum
+                backend[backend_id][bucket_id][bucket_attr] = int(line[1])
+
+    for backend_id, backend_value in backend.iteritems():
+        this_time = time.time()
+        total_calls = backend_value['sum']
+        total_calls_rate  = get_rate('sapcc_performance_backends.sum', this_time, total_calls)
+        output_calls.append('Total calls: %s' % total_calls)
+        output_calls.append('Total call rate: %s/s' % total_calls_rate)
+        perfdata.append(('calls_total', total_calls_rate))
+        total_calls_ok = 0
+        total_calls_warn = 0
+        total_calls_crit = 0
+        for bucket_id, bucket_value in sorted(backend_value.iteritems()):
+            if bucket_id != 'sum':
+                call_dur = bucket_value['minimumCallDurationMs']
+                metric_name = 'calls_min_%s_ms' % call_dur
+                metric_value = bucket_value['numberOfCalls']
+                metric_rate  = get_rate('sapcc_performance_backends.%s' % metric_name, this_time, metric_value)
+                if call_dur >= crit_call_dur:
+                    total_calls_crit += metric_value
+                elif call_dur >= warn_call_dur:
+                    total_calls_warn += metric_value
+                else:
+                    total_calls_ok += metric_value
+                perfdata.append((metric_name, metric_rate))
+        perc_calls_ok = float(0)
+        perc_calls_warn = float(0)
+        perc_calls_crit = float(0)
+        if total_calls > 0:
+            perc_calls_ok = float(total_calls_ok) / float(total_calls) * 100
+            perc_calls_warn = float(total_calls_warn) / float(total_calls) * 100
+            perc_calls_crit = float(total_calls_crit) / float(total_calls) * 100
+            if perc_calls_crit >= crit_call_pct:
+                output_status_crit = ' (!!)'
+                rc = 2
+            if perc_calls_warn >= warn_call_pct:
+                output_status_warn = ' (!)'
+                if (rc == 0):
+                    rc = 1
+        output_calls.append('Calls ok (<%sms): %s' % (warn_call_dur, get_percent_human_readable(perc_calls_ok)))
+        output_calls.append('Calls warn (>=%sms): %s%s' % (warn_call_dur, get_percent_human_readable(perc_calls_warn), output_status_warn))
+        output_calls.append('Calls crit (>=%sms): %s%s' % (crit_call_dur, get_percent_human_readable(perc_calls_crit), output_status_crit))
+        perfdata.append(('calls_pct_ok', get_percent_human_readable(perc_calls_ok), warn_call_pct, crit_call_pct, 0, 100))
+        perfdata.append(('calls_pct_warn', get_percent_human_readable(perc_calls_warn), warn_call_pct, crit_call_pct, 0, 100))
+        perfdata.append(('calls_pct_crit', get_percent_human_readable(perc_calls_crit), warn_call_pct, crit_call_pct, 0, 100))
+        
+    output = ', '.join(output_calls)
+    return (rc, output, perfdata)
+
+
+check_info['sapcc_performance_backends'] = {
+    'check_function'          : check_sapcc_performance_backends,
+    'inventory_function'      : inventory_sapcc_performance_backends,
+    'service_description'     : 'SAP CC Perf Backend',
+    'has_perfdata'            : True,
+    'default_levels_variable' : 'sapcc_performance_backends_default_levels',
+    'group'                   : 'sapcc_performance_backends',
+}
+
+#
+## EOF

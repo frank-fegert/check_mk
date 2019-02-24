@@ -1,0 +1,24 @@
+title: SAP Cloud Connector Subaccount: Info
+agents: sapcc
+catalog: app/sap
+license: GPL
+distribution: check_mk
+description:
+ This check determines {subaccount} information on a SAP Cloud Connector
+ instance. It which work on the same data as the checks {sapcc_subaccounts.tunnel}
+ and {sapcc_subaccounts.app_conn}. The data is gathered from the Check_MK
+ special agent {agent_sapcc} for the SAP Cloud Connector.
+
+ {sapcc_subaccounts.info} just gathers information on each subaccount
+ defined on a SAP Cloud Connector instance. The collected attributes are
+ the {displayName}, the {locationID} and the {regionHost}. It prints this
+ information in the status details of the check and has no threshold checks
+ or performance data. The check status is always {OK}.
+
+item:
+ The item is the name of the {subaccount} on the monitored SAP Cloud
+ Connector instance.
+
+inventory:
+ The inventory creates one service for every {subaccount} configured on
+ the monitored SAP Cloud Connector instance.
